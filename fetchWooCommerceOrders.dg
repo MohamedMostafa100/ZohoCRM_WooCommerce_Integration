@@ -1,0 +1,103 @@
+void automation.fetchWooCommerceOrders()
+{
+// Part 1: Configure your WooCommerce and Zoho CRM details
+// Replace these with your actual live link username, password, URL and WooCommerce API keys
+local_username = "<YOUR_LIVE_LINK_USERNAME>"
+local_password = "<YOUR_LIVE_LINK_USERNAME>"
+wc_base_url = "https://" + local_username + ":" + local_password "@<YOUR_LIVE_LINK_URL>" + "/wp-json/wc/v3/orders";
+consumer_key = "<YOUR_WOOCOMMERCE_CONSUMER_KEY>";
+consumer_secret = "<YOUR_WOOCOMMERCE_CONSUMER_SECRET>";
+http_method = "GET";
+// Part 2: Prepare Connection Parameters and URL
+ConnectionParams = List();
+ConnectionParams.add("consumer_key=" + consumer_key);
+ConnectionParams.add("consumer_secret=" + consumer_secret);
+url = wc_base_url + "?" + ConnectionParams.toString("&");
+try 
+{
+	response = invokeurl
+	[
+		url :url
+		type :GET
+	];
+	orders = response.toList();
+	// Part 3: Process each order
+	for each  order in orders
+	{
+		// Extract customer information
+		customer_first_name = order.get("billing").get("first_name");
+		customer_last_name = order.get("billing").get("last_name");
+		customer_email = order.get("billing").get("email");
+		// Create or update a Contact in Zoho CRM
+		existing_contacts = zoho.crm.searchRecords("Contacts","(Email:equals:" + customer_email + ")");
+		contact_id = null;
+		if(existing_contacts.size() > 0)
+		{
+			contact_id = existing_contacts.get(0).get("id");
+		}
+		else
+		{
+			new_contact_data = Map();
+			new_contact_data.put("First_Name",customer_first_name);
+			new_contact_data.put("Last_Name",customer_last_name);
+			new_contact_data.put("Email",customer_email);
+			create_contact_response = zoho.crm.createRecord("Contacts",new_contact_data);
+			if(create_contact_response.get("id") != null)
+			{
+				contact_id = create_contact_response.get("id");
+			}
+		}
+		// Create a new Deal in Zoho CRM
+		if(contact_id != null)
+		{
+			order_total = order.get("total").toDecimal();
+			order_id = order.get("id");
+			// Get all Order Products
+			order_products = List();
+			for each  product in order.get("line_items")
+			{
+				product_name = product.get("name").remove("(").remove(")");
+				product_price = product.get("price");
+				product_exists = zoho.crm.searchRecords("Products","(Product_Name:equals:" + product_name + ")");
+				product_id = null;
+				if(product_exists.size() > 0)
+				{
+					product_id = product_exists.get(0).get("id");
+				}
+				else
+				{
+					new_product_data = Map();
+					new_product_data.put("Product_Name",product_name);
+					new_product_data.put("Unit_Price",product_price);
+					create_product_response = zoho.crm.createRecord("Products",new_product_data);
+					if(create_product_response.get("id") != null)
+					{
+						product_id = create_product_response.get("id");
+					}
+				}
+				order_products.add(product_id);
+			}
+			deal_name = "WooCommerce Order #" + order_id;
+			deal_exists = zoho.crm.searchRecords("Deals","(Deal_Name:equals:" + deal_name + ")");
+			if(deal_exists.size() == 0)
+			{
+				new_deal_data = Map();
+				new_deal_data.put("Deal_Name",deal_name);
+				new_deal_data.put("Amount",order_total);
+				new_deal_data.put("Stage","Qualification");
+				new_deal_data.put("Contact_Name",{"id":contact_id});
+				create_deal_response = zoho.crm.createRecord("Deals",new_deal_data);
+				for each  order_product in order_products
+				{
+					zoho.crm.updateRelatedRecord("Deals",create_deal_response.get("id"),"Products",order_product,{"Products":""});
+				}
+				info "Created Deal: " + create_deal_response;
+			}
+		}
+	}
+}
+catch (e)
+{
+	info "Error: " + e;
+}
+}
