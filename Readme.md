@@ -79,7 +79,7 @@ Now, set up the function in Zoho CRM where your code will live.
 ### Step 5: Implement the Deluge Script
 
 1.  Open the newly created Deluge function editor.
-2.  Paste the Deluge script (fetchWooCommerceOrders.dg) into the editor.
+2.  Paste the Deluge script in `fetchWooCommerceOrders.dg` into the editor.
 3.  Carefully update the placeholder variables at the top of the script with your unique credentials:
     -   `local_username`
     -   `local_password`
